@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>日本訂單管理</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #f0f4f8; color: #2d3748; min-height: 100vh; }
+  .container { max-width: 780px; margin: 0 auto; padding: 24px 16px; }
+  h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { font-size: 0.85rem; color: #718096; margin-bottom: 24px; }
+
+  .card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+  .card h2 { font-size: 0.95rem; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+
+  label { font-size: 0.82rem; font-weight: 600; color: #4a5568; display: block; margin-bottom: 4px; }
+  input[type="text"] { width: 100%; padding: 9px 12px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.88rem; outline: none; transition: border 0.2s; }
+  input[type="text"]:focus { border-color: #667eea; }
+
+  .btn { display: inline-flex; align-items: center; gap: 7px; padding: 10px 18px; border-radius: 8px; font-size: 0.88rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; }
+  .btn-primary { background: #667eea; color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: #5a67d8; }
+  .btn-success { background: #38a169; color: #fff; }
+  .btn-success:hover:not(:disabled) { background: #2f855a; }
+  .btn-outline { background: #fff; color: #667eea; border: 1.5px solid #667eea; }
+  .btn-outline:hover:not(:disabled) { background: #ebf4ff; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+
+  .status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; }
+  .badge-ok { background: #c6f6d5; color: #276749; }
+  .badge-warn { background: #fefcbf; color: #744210; }
+  .badge-err { background: #fed7d7; color: #742a2a; }
+  .badge-idle { background: #e2e8f0; color: #4a5568; }
+
+  .log { background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; font-size: 0.8rem; font-family: monospace; max-height: 160px; overflow-y: auto; color: #4a5568; }
+  .log-line { padding: 2px 0; border-bottom: 1px solid #edf2f7; }
+  .log-line:last-child { border: none; }
+  .log-line.ok { color: #276749; }
+  .log-line.err { color: #c53030; }
+  .log-line.info { color: #2b6cb0; }
+
+  .progress-bar { height: 6px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin: 10px 0; }
+  .progress-fill { height: 100%; background: #667eea; border-radius: 4px; transition: width 0.4s; }
+
+  .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .summary-box { background: #f7fafc; border-radius: 8px; padding: 12px; text-align: center; }
+  .summary-box .num { font-size: 1.6rem; font-weight: 700; color: #667eea; }
+  .summary-box .lbl { font-size: 0.75rem; color: #718096; margin-top: 2px; }
+
+  .hint { font-size: 0.78rem; color: #a0aec0; margin-top: 6px; }
+
+  .scope-note { background: #ebf8ff; border: 1px solid #bee3f8; border-radius: 8px; padding: 12px; font-size: 0.82rem; color: #2c5282; margin-bottom: 14px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📦 日本訂單管理工具</h1>
+  <p class="subtitle">自動從 Gmail 擷取日本網購訂單，同步至 Google Sheets</p>
+
+  <!-- Step 1: Google OAuth -->
+  <div class="card">
+    <h2>① Google 帳號授權</h2>
+    <div class="scope-note">
+      🔐 此工具需要以下權限：<br>
+      &nbsp;・<b>Gmail（唯讀）</b> — 搜尋訂單確認與出貨通知郵件<br>
+      &nbsp;・<b>Google Sheets</b> — 將資料寫入你指定的試算表
+    </div>
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <button class="btn btn-outline" id="btnAuth" onclick="startAuth()">
+        <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.2l6.8-6.8C35.7 2.2 30.2 0 24 0 14.6 0 6.6 5.3 2.7 13.1l7.9 6.1C12.5 12.9 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/><path fill="#FBBC05" d="M10.6 28.8A14.6 14.6 0 0 1 9.5 24c0-1.7.3-3.3.8-4.8l-7.9-6.1A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l8-6z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2.1 1.4-4.7 2.2-7.7 2.2-6.2 0-11.5-4.2-13.4-9.8l-8 6.1C6.6 42.7 14.6 48 24 48z"/></svg>
+        使用 Google 登入
+      </button>
+      <span class="status-badge badge-idle" id="authStatus">尚未授權</span>
+    </div>
+    <p class="hint" id="userInfo"></p>
+  </div>
+
+  <!-- Step 2: Sheets ID -->
+  <div class="card">
+    <h2>② 指定 Google Sheets</h2>
+    <label for="sheetId">試算表 ID</label>
+    <input type="text" id="sheetId" placeholder="例：1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms">
+    <p class="hint">從試算表網址中複製 ID：docs.google.com/spreadsheets/d/<b>[這段]</b>/edit</p>
+    <div style="margin-top:12px;">
+      <label for="sheetName">工作表名稱（預設 訂單紀錄）</label>
+      <input type="text" id="sheetName" placeholder="訂單紀錄" value="訂單紀錄">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="testSheet()" id="btnTestSheet">測試連線</button>
+      <span class="status-badge badge-idle" id="sheetStatus">未測試</span>
+    </div>
+  </div>
+
+  <!-- Step 3: Sync -->
+  <div class="card">
+    <h2>③ 同步設定</h2>
+    <label for="daysBack">搜尋最近幾天的郵件</label>
+    <input type="text" id="daysBack" value="30" style="width:80px;">
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btnSync" onclick="startSync()" disabled>
+        🔄 開始同步
+      </button>
+    </div>
+    <div id="progressWrap" style="display:none;">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+      <p class="hint" id="progressLabel">準備中...</p>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div class="card" id="summaryCard" style="display:none;">
+    <h2>📊 同步結果</h2>
+    <div class="summary-grid">
+      <div class="summary-box"><div class="num" id="sumNew">0</div><div class="lbl">新增訂單</div></div>
+      <div class="summary-box"><div class="num" id="sumUpdated">0</div><div class="lbl">更新出貨資訊</div></div>
+      <div class="summary-box"><div class="num" id="sumSkipped">0</div><div class="lbl">略過（已存在）</div></div>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div class="card">
+    <h2>📋 執行紀錄</h2>
+    <div class="log" id="logBox"><div class="log-line info">等待操作...</div></div>
+  </div>
+</div>
+
+<script>
+const CLIENT_ID = '274147698694-5q7dnssafamt4r673b3vesjp0dno060s.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/spreadsheets';
+const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
+
+let accessToken = null;
+let processedIds = new Set();
+
+// ─── Auth ───────────────────────────────────────────────
+function startAuth() {
+  const params = new URLSearchParams({
+    client_id: CLIENT_ID,
+    redirect_uri: window.location.href.split('?')[0].split('#')[0],
+    response_type: 'token',
+    scope: SCOPES,
+    prompt: 'select_account'
+  });
+  window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
+}
+
+function handleAuthCallback() {
+  const hash = window.location.hash.substring(1);
+  const params = new URLSearchParams(hash);
+  if (params.get('access_token')) {
+    accessToken = params.get('access_token');
+    history.replaceState(null, '', window.location.pathname);
+    setAuthOk();
+  }
+}
+
+function setAuthOk() {
+  document.getElementById('authStatus').textContent = '已授權 ✓';
+  document.getElementById('authStatus').className = 'status-badge badge-ok';
+  document.getElementById('btnAuth').textContent = '重新授權';
+  document.getElementById('btnSync').disabled = false;
+  fetchUserInfo();
+  log('Google 授權成功', 'ok');
+}
+
+async function fetchUserInfo() {
+  try {
+    const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: 'Bearer ' + accessToken }
+    });
+    const d = await r.json();
+    document.getElementById('userInfo').textContent = '登入帳號：' + (d.email || '');
+  } catch(e) {}
+}
+
+// ─── Sheet Test ──────────────────────────────────────────
+async function testSheet() {
+  const id = document.getElementById('sheetId').value.trim();
+  if (!id) { alert('請輸入試算表 ID'); return; }
+  if (!accessToken) { alert('請先授權 Google 帳號'); return; }
+  try {
+    const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${id}`, {
+      headers: { Authorization: 'Bearer ' + accessToken }
+    });
+    if (r.ok) {
+      const d = await r.json();
+      document.getElementById('sheetStatus').textContent = '連線成功 ✓';
+      document.getElementById('sheetStatus').className = 'status-badge badge-ok';
+      log('試算表連線成功：' + d.properties.title, 'ok');
+    } else {
+      throw new Error(r.status);
+    }
+  } catch(e) {
+    document.getElementById('sheetStatus').textContent = '連線失敗';
+    document.getElementById('sheetStatus').className = 'status-badge badge-err';
+    log('試算表連線失敗：' + e.message, 'err');
+  }
+}
+
+// ─── Log ─────────────────────────────────────────────────
+function log(msg, type='info') {
+  const box = document.getElementById('logBox');
+  const line = document.createElement('div');
+  line.className = 'log-line ' + type;
+  line.textContent = '[' + new Date().toLocaleTimeString('zh-TW') + '] ' + msg;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setProgress(pct, label) {
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = label;
+}
+
+// ─── Main Sync ───────────────────────────────────────────
+async function startSync() {
+  if (!accessToken) { alert('請先授權 Google 帳號'); return; }
+  const sheetId = document.getElementById('sheetId').value.trim();
+  if (!sheetId) { alert('請輸入試算表 ID'); return; }
+
+  document.getElementById('btnSync').disabled = true;
+  document.getElementById('progressWrap').style.display = 'block';
+  document.getElementById('summaryCard').style.display = 'none';
+
+  let stats = { added: 0, updated: 0, skipped: 0 };
+
+  try {
+    await ensureHeader(sheetId);
+
+    log('讀取既有試算表資料...', 'info');
+    setProgress(5, '讀取試算表...');
+    const existingData = await readSheet(sheetId);
+    const existingMap = buildExistingMap(existingData);
+    log(`試算表中已有 ${existingData.length} 筆訂單`, 'info');
+
+    const days = parseInt(document.getElementById('daysBack').value) || 30;
+    const after = Math.floor((Date.now() - days * 86400000) / 1000);
+
+    log('搜尋訂單確認郵件...', 'info');
+    setProgress(15, '搜尋訂單確認郵件...');
+    const orderEmails = await searchGmail(`(注文確認 OR ご注文 OR order confirmation OR ご購入) after:${after}`, 20);
+    log(`找到 ${orderEmails.length} 封訂單相關郵件`, 'info');
+
+    log('搜尋出貨通知郵件...', 'info');
+    setProgress(30, '搜尋出貨通知郵件...');
+    const shipEmails = await searchGmail(`(発送 OR 出荷 OR shipped OR 追跡) after:${after}`, 20);
+    log(`找到 ${shipEmails.length} 封出貨相關郵件`, 'info');
+
+    const allEmails = [...orderEmails, ...shipEmails].filter((e,i,a)=>a.findIndex(x=>x.id===e.id)===i);
+    log(`共 ${allEmails.length} 封待解析郵件`, 'info');
+
+    let done = 0;
+    const parsed = [];
+    for (const email of allEmails) {
+      if (processedIds.has(email.id)) { done++; continue; }
+      setProgress(30 + Math.round(done/allEmails.length*45), `解析郵件 ${done+1}/${allEmails.length}...`);
+      try {
+        const body = await getEmailBody(email.id);
+        const result = await parseWithClaude(body);
+        if (result) { result.emailId = email.id; parsed.push(result); }
+        processedIds.add(email.id);
+      } catch(e) { log('解析失敗：' + e.message, 'err'); }
+      done++;
+      await sleep(300);
+    }
+
+    log(`成功解析 ${parsed.length} 筆資料`, 'ok');
+
+    setProgress(80, '寫入試算表...');
+    for (const item of parsed) {
+      const key = guessKey(item);
+      if (item.type === 'order') {
+        if (existingMap[key]) {
+          stats.skipped++;
+        } else {
+          await appendRow(sheetId, item);
+          existingMap[key] = item;
+          stats.added++;
+          log(`新增：${item.store} - ${item.item}`, 'ok');
+        }
+      } else if (item.type === 'shipment') {
+        const match = findMatch(existingMap, item);
+        if (match) {
+          await updateShipment(sheetId, match.rowIndex, item);
+          stats.updated++;
+          log(`更新出貨：${item.tracking_no} (${item.carrier})`, 'ok');
+        } else {
+          await appendRow(sheetId, item);
+          stats.added++;
+          log(`新增出貨紀錄：${item.tracking_no}`, 'ok');
+        }
+      }
+      await sleep(200);
+    }
+
+    setProgress(100, '完成！');
+    log(`同步完成 ✓ 新增 ${stats.added}、更新 ${stats.updated}、略過 ${stats.skipped}`, 'ok');
+    document.getElementById('sumNew').textContent = stats.added;
+    document.getElementById('sumUpdated').textContent = stats.updated;
+    document.getElementById('sumSkipped').textContent = stats.skipped;
+    document.getElementById('summaryCard').style.display = 'block';
+
+  } catch(e) {
+    log('同步發生錯誤：' + e.message, 'err');
+    console.error(e);
+  }
+
+  document.getElementById('btnSync').disabled = false;
+}
+
+// ─── Gmail ───────────────────────────────────────────────
+async function searchGmail(query, max=20) {
+  const r = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=${max}`,
+    { headers: { Authorization: 'Bearer ' + accessToken } }
+  );
+  const d = await r.json();
+  return d.messages || [];
+}
+
+async function getEmailBody(id) {
+  const r = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,
+    { headers: { Authorization: 'Bearer ' + accessToken } }
+  );
+  const d = await r.json();
+  return extractBody(d);
+}
+
+function extractBody(msg) {
+  const parts = msg.payload?.parts || [];
+  let text = '';
+  function walk(p) {
+    if (p.mimeType === 'text/plain' && p.body?.data) {
+      text += atob(p.body.data.replace(/-/g,'+').replace(/_/g,'/'));
+    } else if (p.parts) p.parts.forEach(walk);
+  }
+  if (parts.length) parts.forEach(walk);
+  else if (msg.payload?.body?.data) {
+    text = atob(msg.payload.body.data.replace(/-/g,'+').replace(/_/g,'/'));
+  }
+  return (text || msg.snippet || '').substring(0, 3000);
+}
+
+// ─── Claude ──────────────────────────────────────────────
+async function parseWithClaude(body) {
+  const prompt = `你是一個訂單資料擷取助手。請從以下日文（或英文）電子郵件內容中，判斷這是「訂單確認」還是「出貨通知」，並擷取對應欄位。
+
+回傳純 JSON，不要加任何說明文字或 markdown。
+
+如果是「訂單確認」，回傳：
+{"type":"order","store":"商家名稱","item":"品名（多個商品用逗號分隔）","price":"價格（含貨幣符號）","order_date":"訂單日期 YYYY-MM-DD","order_no":"訂單編號（若有）"}
+
+如果是「出貨通知」，回傳：
+{"type":"shipment","store":"商家名稱（若有）","ship_date":"出貨日期 YYYY-MM-DD","carrier":"貨運公司","tracking_no":"追蹤編號","order_no":"訂單編號（若有）"}
+
+如果無法判斷或不是訂單相關郵件，回傳：
+{"type":"unknown"}
+
+郵件內容：
+${body}`;
+
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL,
+      max_tokens: 400,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  const d = await r.json();
+  const raw = d.content?.map(c=>c.text||'').join('').trim();
+  try {
+    const clean = raw.replace(/```json|```/g,'').trim();
+    const obj = JSON.parse(clean);
+    return obj.type === 'unknown' ? null : obj;
+  } catch(e) { return null; }
+}
+
+// ─── Sheets ──────────────────────────────────────────────
+const HEADERS = ['訂單日期','商家','品名','價格','訂單編號','出貨日期','貨運公司','追蹤編號','狀態'];
+const COL = {order_date:0,store:1,item:2,price:3,order_no:4,ship_date:5,carrier:6,tracking_no:7,status:8};
+
+async function ensureHeader(sheetId) {
+  const sheetName = document.getElementById('sheetName').value || '訂單紀錄';
+  const r = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName)}!A1:I1`,
+    { headers: { Authorization: 'Bearer ' + accessToken } }
+  );
+  const d = await r.json();
+  if (!d.values || d.values[0]?.[0] !== '訂單日期') {
+    await writeRange(sheetId, `${sheetName}!A1:I1`, [HEADERS]);
+    log('已建立表頭', 'ok');
+  }
+}
+
+async function readSheet(sheetId) {
+  const sheetName = document.getElementById('sheetName').value || '訂單紀錄';
+  const r = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName)}!A2:I`,
+    { headers: { Authorization: 'Bearer ' + accessToken } }
+  );
+  const d = await r.json();
+  return (d.values || []).map((row, i) => ({
+    rowIndex: i + 2,
+    order_date: row[0]||'', store: row[1]||'', item: row[2]||'',
+    price: row[3]||'', order_no: row[4]||'', ship_date: row[5]||'',
+    carrier: row[6]||'', tracking_no: row[7]||'', status: row[8]||''
+  }));
+}
+
+function buildExistingMap(rows) {
+  const m = {};
+  rows.forEach(r => {
+    if (r.order_no) m[r.order_no] = r;
+    if (r.store && r.item) m[r.store+'|'+r.item] = r;
+  });
+  return m;
+}
+
+function guessKey(item) {
+  return item.order_no || (item.store + '|' + (item.item||''));
+}
+
+function findMatch(map, shipItem) {
+  if (shipItem.order_no && map[shipItem.order_no]) return map[shipItem.order_no];
+  if (shipItem.store) {
+    for (const k in map) {
+      if (k.startsWith(shipItem.store+'|')) return map[k];
+    }
+  }
+  return null;
+}
+
+async function appendRow(sheetId, item) {
+  const sheetName = document.getElementById('sheetName').value || '訂單紀錄';
+  const row = ['','','','','','','','',''];
+  if (item.type === 'order') {
+    row[COL.order_date] = item.order_date||'';
+    row[COL.store] = item.store||'';
+    row[COL.item] = item.item||'';
+    row[COL.price] = item.price||'';
+    row[COL.order_no] = item.order_no||'';
+    row[COL.status] = '待出貨';
+  } else {
+    row[COL.store] = item.store||'';
+    row[COL.order_no] = item.order_no||'';
+    row[COL.ship_date] = item.ship_date||'';
+    row[COL.carrier] = item.carrier||'';
+    row[COL.tracking_no] = item.tracking_no||'';
+    row[COL.status] = '已出貨';
+  }
+  await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName)}!A:I:append?valueInputOption=RAW`,
+    { method: 'POST', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [row] }) }
+  );
+}
+
+async function updateShipment(sheetId, rowIndex, item) {
+  const sheetName = document.getElementById('sheetName').value || '訂單紀錄';
+  await writeRange(sheetId, `${sheetName}!F${rowIndex}:I${rowIndex}`, [[
+    item.ship_date||'', item.carrier||'', item.tracking_no||'', '已出貨'
+  ]]);
+}
+
+async function writeRange(sheetId, range, values) {
+  await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`,
+    { method: 'PUT', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values }) }
+  );
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+handleAuthCallback();
+</script>
+</body>
+</html>
